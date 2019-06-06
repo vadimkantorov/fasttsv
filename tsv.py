@@ -10,6 +10,7 @@ def tsvparse(b, max_integer_width = 4, integers = [], floats = []):
     newlines    = a == ord(b'\n')
     tabs        = a == ord(b'\t')
     points      = a == ord(b'.')
+    minus	= a == ord(b'-')
     num_rows = newlines.sum()
 
     breaksi = np.flatnonzero(tabs | newlines)
