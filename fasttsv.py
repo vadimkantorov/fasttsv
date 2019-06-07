@@ -35,7 +35,7 @@ def loads(b, max_integer_width = 4, encoding = 'utf-8', delimiter = '\t', newlin
 	for i in range(1, max_integer_width):
 		np.add(m[i], m[i - 1], out = m[i])
 
-	breaksi = np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).astype(np.int32).reshape(num_rows, -1)
+	breaksi = np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1).astype(np.int32)
 	breaksi -= 1
 	if len(integer_cols) > 0:
 		widthi = np.diff(breaksi.ravel(), prepend = -2).reshape(num_rows, -1)
