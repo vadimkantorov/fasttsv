@@ -1,7 +1,7 @@
 # fasttsv
-TSV parser for Python in pure NumPy vector code.
+TSV parser for Python in using only NumPy ops.
 
-This is not production-ready code, it is mostly a primer on a branchless parsing technique using vectorized code (inspired by [simdjson](https://github.com/lemire/simdjson) and [csvmonkey](https://github.com/dw/csvmonkey)).
+This is not production-ready code, just a primer on a branchless parsing technique using vectorized code.
 
 # Approach
 1. Read the whole file into a byte array in memory
@@ -14,3 +14,6 @@ This is not production-ready code, it is mostly a primer on a branchless parsing
 # Features, scope and limitations
 1. Supports integer, real (only decimal point notation) and utf-8 string columns (quotes not supported)
 2. Uses only NumPy methods, and can be extended to GPU using Google Jax or PyTorch. It can also run on Pyodide.
+
+# Further reading
+For some truly fascinating vectorized parsing check out [simdjson](https://github.com/lemire/simdjson) and [csvmonkey](https://github.com/dw/csvmonkey).
