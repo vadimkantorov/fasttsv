@@ -15,14 +15,14 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 
 	a = np.frombuffer(b, dtype = np.uint8)
 
-	newlines = a == ord(newline)
+	newlines = a == np.uint8(ord(newline))
 	if has_names:
 		idx = np.flatnonzero(newlines)[0] + 1
 		a = a[idx:]
 		newlines = newlines[idx:]
 
-	tabs = a == ord(delimiter)
-	minus = a == ord(b'-')
+	tabs = a == np.uint8(ord(delimiter))
+	minus = a == np.uint8(ord(b'-'))
 	num_rows = newlines.sum()
 
 	breaksi = np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)
@@ -40,7 +40,7 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 
 	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.uint8)
 	a0[:max_integer_width - 1].fill(0)
-	np.subtract(a, ord(b'0'), out = a0[max_integer_width - 1:])
+	np.subtract(a, np.uint8(ord(b'0')), out = a0[max_integer_width - 1:])
 	m = as_strided(a0, shape = [max_integer_width, len(a)], strides = a0.strides * 2)[::-1]
 	m = m * np.power(10, np.arange(max_integer_width), dtype = np.int8 if max_integer_width <= 2 else np.int16 if max_integer_width <= 4 else np.int32)[:, None]
 	for i in range(1, max_integer_width):
@@ -50,20 +50,24 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		resi = m[widthi[:, integers], breaksi[:, integers]].reshape(num_rows, -1)
 
 	if len(float_cols) > 0:
-		points = a == ord(decimal_point)
-		breaksf = np.flatnonzero(points).astype(np.int32)
-		BF = breaksi[:, floats].flatten()
-		BF_ = np.vstack([breaksf - 1, BF]).T.flatten()
-		breaksi += 1
+		BT = breaksi[:, floats].flatten()
+
+		points = a == np.uint8(ord(decimal_point))
+		BD = np.flatnonzero(points).astype(np.int32)
+		BD -= 1
+		BD_BT = np.vstack([BD, BT]).T.flatten()
 		
 		BF__ = breaksi[:, (floats if not uniform else np.arange(len(float_cols))) - 1].flatten()
-		widthf = BF - breaksf
-		WF_ = np.vstack([breaksf - BF__ - 1, widthf]).T.flatten() - 1
-		WF_[WF_ < 0] = 0
+		BF__ += 1
+		WT = BT - BD - 1
+		WD = BD - BF__
+		WD_WT = np.vstack([WD, WT]).T.flatten()
+		WD_WT -= 1
+		WD_WT[WD_WT < 0] = 0
 
-		resf = m[WF_, BF_].reshape(num_rows, -1)
+		resf = m[WD_WT, BD_BT].reshape(num_rows, -1)
 		resf = np.ascontiguousarray(resf.astype(np.float32).reshape(-1, 2).T)
-		np.multiply(resf[1], np.power(10.0, -widthf, dtype = np.float32), out = resf[1])
+		np.multiply(resf[1], np.power(10.0, -WT, dtype = np.float32), out = resf[1])
 		resf = np.add(resf[0], resf[1], out = resf[1]).reshape(num_rows, -1)
 
 	if not uniform:
@@ -103,7 +107,7 @@ if __name__ == '__main__':
 		save_test_case('integers_and_floats_100k.txt.gz', integers_and_floats[:100000])
 		save_test_case('integers_and_floats_100.txt', integers_and_floats[:100])
 
-	def test_case(file_path, delimiter = '\t', encoding = 'utf-8', force_upcast = True):
+	def test_case(file_path, delimiter = '\t', encoding = 'utf-8', force_upcast = True, memoryview = None):
 		print()
 		print('Test case:', file_path, 'force_upcast', force_upcast)
 		f = (gzip.open if file_path.endswith('.gz') else open)(file_path , 'rb') if memoryview is None else gzip.open(io.BytesIO(memoryview), 'rb')
@@ -130,8 +134,8 @@ if __name__ == '__main__':
 		print('fasttsv', time.time() - tic)
 		print()
 
-	test_case('integers_100k.txt.gz')
-	test_case('floats_100k.txt.gz')
+	#test_case('integers_100k.txt.gz')
+	#test_case('floats_100k.txt.gz')
 
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
@@ -150,9 +154,11 @@ if __name__ == '__main__':
 	# baseline
 	#res = np.loadtxt(io.StringIO(b.decode('ascii')), dtype = np.float32 if floats else int, delimiter = '\t')
 
-	#b = open('floats_small.txt', 'rb').read()
-	#tic = time.time()
-	#print(loads(b))
+	b = open('floats_100k.txt', 'rb').read()
+	tic = time.time()
+	import timeit
+	print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
+	#print(loads(b, max_integer_width = 4))
 	#print(time.time() - tic)
 
 	#list(csv.reader(open('test3.txt'), delimiter = '\t'))
