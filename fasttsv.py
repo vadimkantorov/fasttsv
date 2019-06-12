@@ -53,19 +53,16 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 	if len(float_cols) > 0:
 		points = a == np.uint8(ord(decimal_point))
 		BT = breaksi[:, floats] # last character of remainder
-		BD = downcast(np.flatnonzero(points), BT) # dots indices
+		BD = downcast(np.flatnonzero(points)) # dots indices
 		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) # last character of integral part
-		BD_BT = np.dstack([BD, BT]).reshape(-1, 2) # last characters of integral and remainder parts
 
-		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder
+		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder 
 		WD = widthi[:, floats] - WT - 1 # width of integral
-		WD_WT = np.dstack([WD, WT]).reshape(-1, 2) # widths of integral and reminder
 
-		resf = m[WD_WT - 1, BD_BT].reshape(num_rows, -1)
-		i = resf[:, ::2]
-		r = resf[:, 1::2].astype(np.float32)
-		np.multiply(r, np.power(10.0, -WT, dtype = np.float32), out = r)
-		resf = np.add(r, i, out = r).reshape(num_rows, -1)
+		resf = np.power(10.0, -WT, dtype = np.float32) 
+		WT -= 1; resf *= m[WT, BT] 
+		WD -= 1; resf += m[WD, BD]
+		resf = resf.reshape(num_rows, -1)
 
 	if not uniform:
 		integer_cols, float_cols = [{n : j for j, (i, n) in enumerate(cols)} for cols in [integer_cols, float_cols]]
@@ -132,7 +129,7 @@ if __name__ == '__main__':
 		print()
 
 	#test_case('integers_100k.txt.gz')
-	test_case('floats_100k.txt.gz')
+	#test_case('floats_100k.txt.gz')
 
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
@@ -143,6 +140,6 @@ if __name__ == '__main__':
 	#b = open('floats_100k.txt', 'rb').read()
 	#tic = time.time()
 	#import timeit; #print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
-	#print(loads(b'123.567\t2.45\t4\n', max_integer_width = 4))
+	print(loads(b'123.567\t2.45\t4\n', max_integer_width = 4))
 	#print(loads(b, max_integer_width = 4))
 	#print(time.time() - tic)
