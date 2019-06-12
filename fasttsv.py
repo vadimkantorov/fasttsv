@@ -38,8 +38,8 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 	head = np.genfromtxt(io.BytesIO(b), max_rows = 2 if has_names else 1, delimiter = delimiter, names = True if has_names else None, dtype = None, encoding = encoding)
 	uniform = len(head.dtype.descr) == 1 and not head.dtype.descr[0][0]
 
-	integer_cols = [(i, n) for i, (n, t) in enumerate(head.dtype.descr) if np.issubdtype(np.dtype(t), np.integer)] if not uniform else np.arange(head.shape[-1], dtype = int) if np.issubdtype(head.dtype, np.integer) else np.array([], dtype = int)
-	float_cols = [(i, n) for i, (n, t) in enumerate(head.dtype.descr) if np.issubdtype(np.dtype(t), np.floating)] if not uniform else np.arange(head.shape[-1], dtype = int) if np.issubdtype(head.dtype, np.floating) else np.array([], dtype = int)
+	integer_cols = [(i, n) for i, (n, t) in enumerate(head.dtype.descr) if np.issubdtype(np.dtype(t), np.integer)] if not uniform else np.arange(head.shape[-1], dtype = np.int16) if np.issubdtype(head.dtype, np.integer) else np.array([], dtype = np.int16)
+	float_cols = [(i, n) for i, (n, t) in enumerate(head.dtype.descr) if np.issubdtype(np.dtype(t), np.floating)] if not uniform else np.arange(head.shape[-1], dtype = np.int16) if np.issubdtype(head.dtype, np.floating) else np.array([], dtype = np.int16)
 	integers = np.array(list(zip(*integer_cols))[0]) if not uniform else slice(None)
 	floats = np.array(list(zip(*float_cols))[0]) if not uniform else slice(None)
 
@@ -82,7 +82,10 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 	a0[:max_integer_width - 1].fill(0)
 	np.subtract(a, np.uint8(ord('0')), out = a0[max_integer_width - 1:])
 	m = as_strided(a0, shape = [max_integer_width, len(a)], strides = a0.strides * 2)[::-1]
-	m = m * np.power(10, np.arange(max_integer_width), dtype = np.int8 if max_integer_width <= 2 else np.int16 if max_integer_width <= 4 else np.int32)[:, None]
+	max_integer_dtype = np.int8 if max_integer_width <= 2 else np.int16 if max_integer_width <= 4 else np.int32
+	p = np.power(10, np.arange(max_integer_width + 1, dtype = max_integer_dtype), dtype = max_integer_dtype)
+	m = m * p[:-1, None]
+	# np.cumsum(m, axis = 0, out = m)
 	for i in range(1, max_integer_width):
 		np.add(m[i], m[i - 1], out = m[i])
 
@@ -90,7 +93,7 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 		resi = m[width[:, integers], breaks[:, integers]].reshape(num_rows, -1)
 
 	if len(float_cols) > 0:
-		resf = np.power(10.0, -WT, dtype = np.float32)
+		resf = np.reciprocal(p, dtype = np.float32)[WT]
 		WT -= 1; resf *= m[WT, BT]
 		WD -= 1; resf += m[WD, BD]
 		resf = resf.reshape(num_rows, -1)
@@ -166,9 +169,9 @@ if __name__ == '__main__':
 			print('max-abs-diff', np.abs(x - y).max())
 		print()
 
-	test_case('integers_100k.txt.gz')
+	#test_case('integers_100k.txt.gz')
 	test_case('floats_100k.txt.gz')
-	test_case('integers_and_floats_100k.txt', force_upcast = True)
+	#test_case('integers_and_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
 

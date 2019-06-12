@@ -5,7 +5,6 @@ This is not production-ready code, just a primer on a branchless parsing techniq
 
 #### TODO
 - support strings
-- support better `max_integer_width` inference
 - support negative integers and floats
 
 # Approach
