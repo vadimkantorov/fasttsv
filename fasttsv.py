@@ -34,10 +34,10 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		return integer_array
 
 	breaksi = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaksi -= 1 # last character of integers
-	widthi = np.diff(breaksi.ravel(), prepend = -2).astype(np.int8).reshape(num_rows, -1); widthi -= 1 # width of integers
-
 	# widthi = np.diff(np.pad(breaksi.ravel(), (1, 0), mode = 'constant', constant_values = -1)).reshape(num_rows, -1)
-	max_integer_width = max_integer_width if max_integer_width is not None else widthi.max() - 1
+	widthi = np.diff(breaksi.ravel(), prepend = -2).astype(np.int8).reshape(num_rows, -1)
+	widthi -= 2 # width of integers - 1
+	max_integer_width = max_integer_width if max_integer_width is not None else widthi.max() + 1
 
 	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.int8)
 	a0[:max_integer_width - 1].fill(0)
@@ -48,7 +48,7 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		np.add(m[i], m[i - 1], out = m[i])
 
 	if len(integer_cols) > 0:
-		resi = m[widthi[:, integers] - 1, breaksi[:, integers]].reshape(num_rows, -1)
+		resi = m[widthi[:, integers], breaksi[:, integers]].reshape(num_rows, -1)
 
 	if len(float_cols) > 0:
 		points = a == np.uint8(ord(decimal_point))
@@ -57,7 +57,7 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) # last character of integral part
 
 		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder 
-		WD = widthi[:, floats] - WT - 1 # width of integral
+		WD = widthi[:, floats] - WT # width of integral
 
 		resf = np.power(10.0, -WT, dtype = np.float32) 
 		WT -= 1; resf *= m[WT, BT] 
