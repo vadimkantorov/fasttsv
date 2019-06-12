@@ -1,7 +1,37 @@
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
-def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#', decimal_point = '.', force_upcast = False):
+def npstring(b, encoding = 'utf-8', delimiter = '\t', newline = '\n'):
+	has_names = b[0] == ord(comments)
+	head = np.genfromtxt(io.BytesIO(b), max_rows = 2 if has_names else 1, delimiter = delimiter, names = True if has_names else None, dtype = None, encoding = encoding)
+	a = np.fromstring(b, dtype = np.uint8)
+	newlines = a == ord(newline)
+	tabs = a == ord(delimiter)
+	mask = a >= ord('0') & a <= ord('9') | a == ord('.') | tabs | newlines
+	num_rows = newlines.sum()
+	if has_names:
+		num_rows -= 1
+	if a[-1] == ord(newline):
+		num_rows += 1
+
+	num_cols_num = len(head[0]) if head.dtype.descr == 1 else sum(t[1] in ['i', 'f'] for n, t in head.dtype.descr)
+	idx_cols_str = list(range(len(head[0]))) if head.dtype.descr == 1 else [i for i, (n, t) in enumerate(head.dtype.descr) if t[1] in ['S', 'U']]
+
+	numbers = np.fromstring(a[mask], count = num_rows * num_cols_num, dtype = np.float32, sep = delimiter).reshape(num_rows, -1)
+
+	breaks = np.flatnonzero(a == ord(delimiter) | newlines).reshape(num_rows, -1)
+	width = np.empty(breaks.shape, dtype = np.int16)
+	np.subtract(breaks.ravel()[1:], breaks.ravel()[:-1], out = width.ravel()[1:])
+	width[0, 0] = breaks[0, 0] + 2
+	b = breaks[:, idx_cols_str]
+	w = width[:, idx_cols_str]
+	m = w.max(0)
+
+	#col = a[
+
+
+
+def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#', decimal_point = '.', force_upcast = False):
 	assert b[-1] == ord(newline)
 
 	has_names = b[0] == ord(comments)
@@ -33,35 +63,41 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 				return integer_array.astype(dt, copy = False)
 		return integer_array
 
-	breaksi = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaksi -= 1 # last character of integers
-	widthi = np.empty(breaksi.shape, dtype = np.int8)
-	np.subtract(breaksi.ravel()[1:], breaksi.ravel()[:-1], out = widthi.ravel()[1:])
-	widthi[0, 0] = breaksi[0, 0] + 2
-	widthi -= 2 # width of integers - 1
+	breaks = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaks -= 1 # last character of integers
+	width = np.empty(breaks.shape, dtype = np.int8)
+	np.subtract(breaks.ravel()[1:], breaks.ravel()[:-1], out = width.ravel()[1:])
+	width[0, 0] = breaks[0, 0] + 2
+	width -= 2 # width of integers - 1
 
-	max_integer_width = max_integer_width if max_integer_width is not None else widthi.max() + 1
+
+	max_integer_width = width.max() + 1
+	#if len(integer_cols) > 0:
+	#	max_integer_width = max(max_integer_width, width[:, integers].max() + 1)
+
+	#if len(float_cols) > 0:
+	#	max_integer_width =
 
 	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.int8)
 	a0[:max_integer_width - 1].fill(0)
-	np.subtract(a, np.uint8(ord(b'0')), out = a0[max_integer_width - 1:])
+	np.subtract(a, np.uint8(ord('0')), out = a0[max_integer_width - 1:])
 	m = as_strided(a0, shape = [max_integer_width, len(a)], strides = a0.strides * 2)[::-1]
 	m = m * np.power(10, np.arange(max_integer_width), dtype = np.int8 if max_integer_width <= 2 else np.int16 if max_integer_width <= 4 else np.int32)[:, None]
 	for i in range(1, max_integer_width):
 		np.add(m[i], m[i - 1], out = m[i])
 
 	if len(integer_cols) > 0:
-		resi = m[widthi[:, integers], breaksi[:, integers]].reshape(num_rows, -1)
+		resi = m[width[:, integers], breaks[:, integers]].reshape(num_rows, -1)
 
 	if len(float_cols) > 0:
 		points = a == np.uint8(ord(decimal_point))
-		BT = breaksi[:, floats] # last character of remainder
+		BT = breaks[:, floats] # last character of remainder
 		BD = downcast(np.flatnonzero(points)) # dots indices
 		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) # last character of integral part
 		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder
 
 		resf = np.power(10.0, -WT, dtype = np.float32)
 		WT -= 1; resf *= m[WT, BT]
-		WD = np.subtract(widthi[:, floats], WT, out = WT)
+		WD = np.subtract(width[:, floats], WT, out = WT)
 		WD -= 2; resf += m[WD, BD]
 		resf = resf.reshape(num_rows, -1)
 
@@ -130,13 +166,13 @@ if __name__ == '__main__':
 		print('csv.reader', time.time() - tic)
 
 		tic = time.time()
-		y = loads(b, max_integer_width = 4, force_upcast = force_upcast)
+		y = loads(b, force_upcast = force_upcast)
 		print('fasttsv', time.time() - tic)
 		if force_upcast:
 			print('max-abs-diff', np.abs(x - y).max())
 		print()
 
-	test_case('integers_100k.txt.gz')
+	#test_case('integers_100k.txt.gz')
 	test_case('floats_100k.txt.gz')
 	#test_case('integers_and_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
