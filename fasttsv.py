@@ -63,20 +63,21 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 				return integer_array.astype(dt, copy = False)
 		return integer_array
 
-	breaks = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaks -= 1 # last character of integers
+	breaks = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaks -= 1 
 	width = np.empty(breaks.shape, dtype = np.int8)
 	np.subtract(breaks.ravel()[1:], breaks.ravel()[:-1], out = width.ravel()[1:])
 	width[0, 0] = breaks[0, 0] + 2
-	width -= 2 # width of integers - 1
+	width -= 2 
 
+	if len(float_cols) > 0:
+		points = a == np.uint8(ord(decimal_point))
+		BT = breaks[:, floats] 
+		BD = downcast(np.flatnonzero(points)) 
+		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) 
+		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1 
+		WD = width[:, floats] - WT
 
-	max_integer_width = width.max() + 1
-	#if len(integer_cols) > 0:
-	#	max_integer_width = max(max_integer_width, width[:, integers].max() + 1)
-
-	#if len(float_cols) > 0:
-	#	max_integer_width =
-
+	max_integer_width = max(width[:, integers].max() + 1 if len(integer_cols) > 0 else 0, max(WT.max(), WD.max()) if len(float_cols) > 0 else 0)
 	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.int8)
 	a0[:max_integer_width - 1].fill(0)
 	np.subtract(a, np.uint8(ord('0')), out = a0[max_integer_width - 1:])
@@ -89,16 +90,9 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 		resi = m[width[:, integers], breaks[:, integers]].reshape(num_rows, -1)
 
 	if len(float_cols) > 0:
-		points = a == np.uint8(ord(decimal_point))
-		BT = breaks[:, floats] # last character of remainder
-		BD = downcast(np.flatnonzero(points)) # dots indices
-		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) # last character of integral part
-		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder
-
 		resf = np.power(10.0, -WT, dtype = np.float32)
 		WT -= 1; resf *= m[WT, BT]
-		WD = np.subtract(width[:, floats], WT, out = WT)
-		WD -= 2; resf += m[WD, BD]
+		WD -= 1; resf += m[WD, BD]
 		resf = resf.reshape(num_rows, -1)
 
 	if uniform:
@@ -172,9 +166,9 @@ if __name__ == '__main__':
 			print('max-abs-diff', np.abs(x - y).max())
 		print()
 
-	#test_case('integers_100k.txt.gz')
+	test_case('integers_100k.txt.gz')
 	test_case('floats_100k.txt.gz')
-	#test_case('integers_and_floats_100k.txt', force_upcast = True)
+	test_case('integers_and_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
 
@@ -182,5 +176,5 @@ if __name__ == '__main__':
 
 	#b = open('integers_and_floats_100.txt', 'rb').read()
 	#import timeit; #print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
-	#print(loads(b'123.567\t2.45\t4\n', max_integer_width = 4))
+	#print(loads(b'123.567\t2.45\t4\n'))
 	#print(loads(b, max_integer_width = 4, force_upcast = True))
