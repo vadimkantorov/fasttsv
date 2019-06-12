@@ -34,9 +34,11 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		return integer_array
 
 	breaksi = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaksi -= 1 # last character of integers
-	# widthi = np.diff(np.pad(breaksi.ravel(), (1, 0), mode = 'constant', constant_values = -1)).reshape(num_rows, -1)
-	widthi = np.diff(breaksi.ravel(), prepend = -2).astype(np.int8).reshape(num_rows, -1)
+	widthi = np.empty(breaksi.shape, dtype = np.int8)
+	np.subtract(breaksi.ravel()[1:], breaksi.ravel()[:-1], out = widthi.ravel()[1:])
+	widthi[0, 0] = breaksi[0, 0] + 2
 	widthi -= 2 # width of integers - 1
+
 	max_integer_width = max_integer_width if max_integer_width is not None else widthi.max() + 1
 
 	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.int8)
@@ -62,7 +64,6 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		WD = np.subtract(widthi[:, floats], WT, out = WT)
 		WD -= 2; resf += m[WD, BD]
 		resf = resf.reshape(num_rows, -1)
-
 
 	if uniform:
 		return resf if len(float_cols) > 0 else resi
@@ -130,13 +131,15 @@ if __name__ == '__main__':
 
 		tic = time.time()
 		y = loads(b, max_integer_width = 4, force_upcast = force_upcast)
-		print('fasttsv', time.time() - tic, 'max-abs-diff', np.abs(x[:1] - y[:1]).max())
+		print('fasttsv', time.time() - tic)
+		if force_upcast:
+			print('max-abs-diff', np.abs(x - y).max())
 		print()
 
 	test_case('integers_100k.txt.gz')
 	test_case('floats_100k.txt.gz')
-	test_case('integers_and_floats_100k.txt', force_upcast = True)
-	test_case('integers_then_floats_100k.txt', force_upcast = True)
+	#test_case('integers_and_floats_100k.txt', force_upcast = True)
+	#test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
 
 	# python3 -m cProfile -s cumtime fasttsv.py

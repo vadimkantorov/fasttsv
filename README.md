@@ -3,6 +3,11 @@ TSV parser for Python in using only NumPy ops.
 
 This is not production-ready code, just a primer on a branchless parsing technique using vectorized code.
 
+#### TODO
+- support strings
+- support better `max_integer_width` inference
+- support negative integers and floats
+
 # Approach
 1. Read the whole file into a byte array in memory
 2. Find positions of tabs and decimal points
