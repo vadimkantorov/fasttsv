@@ -22,23 +22,24 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		newlines = newlines[idx:]
 
 	tabs = a == np.uint8(ord(delimiter))
-	minus = a == np.uint8(ord(b'-'))
 	num_rows = newlines.sum()
 
-	breaksi = np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)
-	breaksi_max = breaksi.max()
-	for dt in [np.int8, np.int16, np.int32]:
-		if breaksi_max < np.iinfo(dt).max:
-			breaksi = breaksi.astype(dt, copy = False)
-			break
+	def downcast(integer_array, other = None):
+		max = integer_array.max()
+		if other is not None and max < np.iinfo(other.dtype).max:
+			return integer_array.astype(other.dtype)
+		for dt in [np.int8, np.int16, np.int32]:
+			if max < np.iinfo(dt).max:
+				return integer_array.astype(dt, copy = False)
+		return integer_array
 
-	breaksi -= 1
-	widthi = np.diff(breaksi.ravel(), prepend = -2).reshape(num_rows, -1)
+	breaksi = downcast(np.flatnonzero(np.bitwise_or(tabs, newlines, out = tabs)).reshape(num_rows, -1)); breaksi -= 1 # last character of integers
+	widthi = np.diff(breaksi.ravel(), prepend = -2).astype(np.int8).reshape(num_rows, -1); widthi -= 1 # width of integers
+
 	# widthi = np.diff(np.pad(breaksi.ravel(), (1, 0), mode = 'constant', constant_values = -1)).reshape(num_rows, -1)
 	max_integer_width = max_integer_width if max_integer_width is not None else widthi.max() - 1
-	widthi -= 2
 
-	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.uint8)
+	a0 = np.empty((max_integer_width - 1 + len(a), ), dtype = np.int8)
 	a0[:max_integer_width - 1].fill(0)
 	np.subtract(a, np.uint8(ord(b'0')), out = a0[max_integer_width - 1:])
 	m = as_strided(a0, shape = [max_integer_width, len(a)], strides = a0.strides * 2)[::-1]
@@ -47,28 +48,24 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		np.add(m[i], m[i - 1], out = m[i])
 
 	if len(integer_cols) > 0:
-		resi = m[widthi[:, integers], breaksi[:, integers]].reshape(num_rows, -1)
+		resi = m[widthi[:, integers] - 1, breaksi[:, integers]].reshape(num_rows, -1)
 
 	if len(float_cols) > 0:
-		BT = breaksi[:, floats].flatten()
-
 		points = a == np.uint8(ord(decimal_point))
-		BD = np.flatnonzero(points).astype(np.int32)
-		BD -= 1
-		BD_BT = np.vstack([BD, BT]).T.flatten()
-		
-		BF__ = breaksi[:, (floats if not uniform else np.arange(len(float_cols))) - 1].flatten()
-		BF__ += 1
-		WT = BT - BD - 1
-		WD = BD - BF__
-		WD_WT = np.vstack([WD, WT]).T.flatten()
-		WD_WT -= 1
-		WD_WT[WD_WT < 0] = 0
+		BT = breaksi[:, floats] # last character of remainder
+		BD = downcast(np.flatnonzero(points), BT) # dots indices
+		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) # last character of integral part
+		BD_BT = np.dstack([BD, BT]).reshape(-1, 2) # last characters of integral and remainder parts
 
-		resf = m[WD_WT, BD_BT].reshape(num_rows, -1)
-		resf = np.ascontiguousarray(resf.astype(np.float32).reshape(-1, 2).T)
-		np.multiply(resf[1], np.power(10.0, -WT, dtype = np.float32), out = resf[1])
-		resf = np.add(resf[0], resf[1], out = resf[1]).reshape(num_rows, -1)
+		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder
+		WD = widthi[:, floats] - WT - 1 # width of integral
+		WD_WT = np.dstack([WD, WT]).reshape(-1, 2) # widths of integral and reminder
+
+		resf = m[WD_WT - 1, BD_BT].reshape(num_rows, -1)
+		i = resf[:, ::2]
+		r = resf[:, 1::2].astype(np.float32)
+		np.multiply(r, np.power(10.0, -WT, dtype = np.float32), out = r)
+		resf = np.add(r, i, out = r).reshape(num_rows, -1)
 
 	if not uniform:
 		integer_cols, float_cols = [{n : j for j, (i, n) in enumerate(cols)} for cols in [integer_cols, float_cols]]
@@ -135,7 +132,7 @@ if __name__ == '__main__':
 		print()
 
 	#test_case('integers_100k.txt.gz')
-	#test_case('floats_100k.txt.gz')
+	test_case('floats_100k.txt.gz')
 
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
@@ -143,24 +140,9 @@ if __name__ == '__main__':
 
 	# python3 -m cProfile -s cumtime fasttsv.py
 
+	#b = open('floats_100k.txt', 'rb').read()
 	#tic = time.time()
-	#print(loads(b'# a\tb\tc\td\n1\t22.60\t3\t5.0\n3\t44.8\t8\t9.09\n'))
-
-	#print(tsvparse(b'1\t22\n3\t44\n', integers = True))
-	#np.savetxt('test.txt', np.random.randint(0, 10000, size = (100000, 20)),fmt = '%d', delimiter = '\t')
-	#np.savetxt('test2.txt', np.random.rand(100000, 20) * 10,fmt = '%.4f', delimiter = '\t')
-	#np.savetxt('test3.txt', np.random.randint(0, 10000, size = (1000000, 20)),fmt = '%d', delimiter = '\t')
-	
-	# baseline
-	#res = np.loadtxt(io.StringIO(b.decode('ascii')), dtype = np.float32 if floats else int, delimiter = '\t')
-
-	b = open('floats_100k.txt', 'rb').read()
-	tic = time.time()
-	import timeit
-	print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
+	#import timeit; #print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
+	#print(loads(b'123.567\t2.45\t4\n', max_integer_width = 4))
 	#print(loads(b, max_integer_width = 4))
 	#print(time.time() - tic)
-
-	#list(csv.reader(open('test3.txt'), delimiter = '\t'))
-	#M = loads(open('test.txt', 'rb').read()); import IPython; IPython.embed()
-
