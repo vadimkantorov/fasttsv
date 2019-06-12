@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.lib.stride_tricks import as_strided
 
-def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#', decimal_point = '.'):
+def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#', decimal_point = '.', force_upcast = False):
 	assert b[-1] == ord(newline)
 
 	has_names = b[0] == ord(comments)
@@ -55,20 +55,25 @@ def loads(b, max_integer_width = None, encoding = 'utf-8', delimiter = '\t', new
 		BT = breaksi[:, floats] # last character of remainder
 		BD = downcast(np.flatnonzero(points)) # dots indices
 		BD = np.subtract(BD, 1, out = BD).reshape(BT.shape) # last character of integral part
+		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder
 
-		WT = np.subtract(BT, BD, dtype = np.int8); WT -= 1  # width of remainder 
-		WD = widthi[:, floats] - WT # width of integral
-
-		resf = np.power(10.0, -WT, dtype = np.float32) 
-		WT -= 1; resf *= m[WT, BT] 
-		WD -= 1; resf += m[WD, BD]
+		resf = np.power(10.0, -WT, dtype = np.float32)
+		WT -= 1; resf *= m[WT, BT]
+		WD = np.subtract(widthi[:, floats], WT, out = WT)
+		WD -= 2; resf += m[WD, BD]
 		resf = resf.reshape(num_rows, -1)
 
-	if not uniform:
-		integer_cols, float_cols = [{n : j for j, (i, n) in enumerate(cols)} for cols in [integer_cols, float_cols]]
-		return np.rec.fromarrays([resi[:, integer_cols[n]] if n in integer_cols else resf[:, float_cols[n]] for n in head.dtype.names], names=head.dtype.names)
+
+	if uniform:
+		return resf if len(float_cols) > 0 else resi
 	else:
-		return resi if len(integer_cols) > 0 else resf
+		integer_cols, float_cols = [{n : j for j, (i, n) in enumerate(cols)} for cols in [integer_cols, float_cols]]
+
+		if force_upcast:
+			dtype = resf.dtype if len(float_cols) > 0 else resi.dtype
+			return np.column_stack([(resi[:, integer_cols[n]] if n in integer_cols else resf[:, float_cols[n]]).astype(dtype) for n in head.dtype.names])
+		else:
+			return np.rec.fromarrays([resi[:, integer_cols[n]] if n in integer_cols else resf[:, float_cols[n]] for n in head.dtype.names], names=head.dtype.names)
 		
 if __name__ == '__main__':
 	import gzip, io, time, csv
@@ -124,22 +129,19 @@ if __name__ == '__main__':
 		print('csv.reader', time.time() - tic)
 
 		tic = time.time()
-		loads(b, max_integer_width = 4)
-		print('fasttsv', time.time() - tic)
+		y = loads(b, max_integer_width = 4, force_upcast = force_upcast)
+		print('fasttsv', time.time() - tic, 'max-abs-diff', np.abs(x[:1] - y[:1]).max())
 		print()
 
-	#test_case('integers_100k.txt.gz')
-	#test_case('floats_100k.txt.gz')
-
-	#test_case('integers_then_floats_100k.txt', force_upcast = True)
+	test_case('integers_100k.txt.gz')
+	test_case('floats_100k.txt.gz')
+	test_case('integers_and_floats_100k.txt', force_upcast = True)
+	test_case('integers_then_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = False)
-	#test_case('integers_and_floats_100k.txt', force_upcast = True)
 
 	# python3 -m cProfile -s cumtime fasttsv.py
 
-	#b = open('floats_100k.txt', 'rb').read()
-	#tic = time.time()
+	#b = open('integers_and_floats_100.txt', 'rb').read()
 	#import timeit; #print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
-	print(loads(b'123.567\t2.45\t4\n', max_integer_width = 4))
-	#print(loads(b, max_integer_width = 4))
-	#print(time.time() - tic)
+	#print(loads(b'123.567\t2.45\t4\n', max_integer_width = 4))
+	#print(loads(b, max_integer_width = 4, force_upcast = True))
