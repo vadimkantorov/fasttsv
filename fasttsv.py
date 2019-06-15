@@ -7,16 +7,13 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 	head = np.genfromtxt(io.BytesIO(b), max_rows = 2 if has_names else 1, delimiter = delimiter, names = True if has_names else None, dtype = None, encoding = encoding)
 	uniform = len(head.dtype.descr) == 1 and not head.dtype.descr[0][0]
 	num_cols = (head.size if not has_names else head.size // 2) if uniform else len(head.dtype.descr)
-
 	integer_cols = [(i, n) for i, (n, t) in enumerate(head.dtype.descr) if np.issubdtype(np.dtype(t), np.integer)] if not uniform else np.arange(head.shape[-1], dtype = np.int16) if np.issubdtype(head.dtype, np.integer) else np.array([], dtype = np.int16)
 	float_cols = [(i, n) for i, (n, t) in enumerate(head.dtype.descr) if np.issubdtype(np.dtype(t), np.floating)] if not uniform else np.arange(head.shape[-1], dtype = np.int16) if np.issubdtype(head.dtype, np.floating) else np.array([], dtype = np.int16)
 	integers = np.array(list(zip(*integer_cols))[0]) if not uniform else slice(None)
 	floats = np.array(list(zip(*float_cols))[0]) if not uniform else slice(None)
 
-	def downcast(integer_array, other = None):
+	def downcast(integer_array):
 		max = integer_array.max()
-		if other is not None and max < np.iinfo(other.dtype).max:
-			return integer_array.astype(other.dtype)
 		for dt in [np.int8, np.int16, np.int32]:
 			if max < np.iinfo(dt).max:
 				return integer_array.astype(dt, copy = False)
@@ -56,16 +53,22 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 		resi = m[width[:, integers], breaks[:, integers]].reshape(-1, len(integer_cols))
 
 	if len(float_cols) > 0:
-		resf = np.reciprocal(p, dtype = np.float32)[WT]
-		WT -= 1; resf *= m[WT, BT]
-		WD -= 1; resf += m[WD, BD]
-		resf = resf.reshape(-1, len(float_cols))
+		resf = np.reciprocal(p, dtype = np.float32)[WT] 
+		WT -= 1; resf *= m[WT, BT] 
+		WD -= 1; resf += m[WD, BD] 
+
+		#WT -= 1; WT *= m.shape[1]; WT += BT
+		#buf = m.ravel().take(WT.ravel()).reshape(resf.shape)
+		#np.multiply(resf, buf, out = resf)
+
+		#WD -= 1; WD *= m.shape[1]; WD += BD
+		#buf = m.ravel().take(WD.ravel(), out = buf.ravel()).reshape(resf.shape)
+		#np.add(resf, buf, out = resf)
 
 	if uniform:
 		return resf if len(float_cols) > 0 else resi
 	else:
 		integer_cols, float_cols = [{n : j for j, (i, n) in enumerate(cols)} for cols in [integer_cols, float_cols]]
-
 		if force_upcast:
 			dtype = resf.dtype if len(float_cols) > 0 else resi.dtype
 			return np.column_stack([(resi[:, integer_cols[n]] if n in integer_cols else resf[:, float_cols[n]]).astype(dtype) for n in head.dtype.names])
@@ -73,7 +76,7 @@ def loads(b, encoding = 'utf-8', delimiter = '\t', newline = '\n', comments = '#
 			return np.rec.fromarrays([resi[:, integer_cols[n]] if n in integer_cols else resf[:, float_cols[n]] for n in head.dtype.names], names=head.dtype.names)
 		
 if __name__ == '__main__':
-	import gzip, io, time, csv
+	import gzip, io, time, csv, timeit
 
 	if False:
 		save_test_case = lambda file_path, x, decimal_width = 4: np.savetxt(file_path, x, delimiter='\t', newline='\n', encoding='utf-8', fmt='\t'.join(dict(i = '%d', f = f'%.{decimal_width}f').get(t[1], '%s') for n, t in x.dtype.descr))
@@ -125,14 +128,15 @@ if __name__ == '__main__':
 		list(csv.reader(io.StringIO(s), delimiter = delimiter, quoting = csv.QUOTE_NONNUMERIC))
 		print('csv.reader', time.time() - tic)
 
-		tic = time.time()
+		tic = time.time(); N = 50
+		#globals()['b'] = b; globals()['force_upcast'] = force_upcast; print('fasttsv', timeit.timeit('loads(b, force_upcast = force_upcast)', number = N, globals = globals()) / N)
 		y = loads(b, force_upcast = force_upcast)
 		print('fasttsv', time.time() - tic)
 		#if force_upcast:
 		#	print('max-abs-diff', np.abs(x - y).max())
 		print()
 
-	test_case('integers_100k.txt.gz')
+	#test_case('integers_100k.txt.gz')
 	test_case('floats_100k.txt.gz')
 	#test_case('integers_and_floats_100k.txt', force_upcast = True)
 	#test_case('integers_then_floats_100k.txt', force_upcast = True)
@@ -141,6 +145,5 @@ if __name__ == '__main__':
 	# python3 -m cProfile -s cumtime fasttsv.py
 
 	#b = open('integers_and_floats_100.txt', 'rb').read()
-	#import timeit; #print(timeit.timeit('loads(b, max_integer_width = 4)', number = 10, globals = globals()) / 10)
 	#print(loads(b'123.567\t2.45\t4\n'))
 	#print(loads(b, max_integer_width = 4, force_upcast = True))
